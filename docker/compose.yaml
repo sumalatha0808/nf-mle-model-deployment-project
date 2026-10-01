@@ -1,0 +1,79 @@
+name: nf-mle-deployment-project
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: mlops
+      POSTGRES_PASSWORD: mlops
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlops -d mlflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mlflow:
+    image: python:3.13-slim
+    depends_on:
+      postgres:
+        condition: service_healthy
+    working_dir: /app
+    environment:
+      PGUSER: mlops
+      PGPASSWORD: mlops
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        pip install --no-cache-dir mlflow==3.16.1 psycopg2-binary==2.9.13 && \
+        mkdir -p /app/storage/mlartifacts && \
+        mlflow server \
+          --host 0.0.0.0 \
+          --port 5000 \
+          --backend-store-uri postgresql+psycopg2://postgres:5432/mlflow \
+          --serve-artifacts \
+          --artifacts-destination /app/storage/mlartifacts \
+          --allowed-hosts "mlflow,mlflow:5000,localhost,localhost:5001,127.0.0.1,127.0.0.1:5001"
+    ports:
+      - "5001:5000"
+    volumes:
+      - ../:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+
+  api:
+    image: python:3.13-slim
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    working_dir: /app
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      UV_PROJECT_ENVIRONMENT: /opt/venv
+      UV_LINK_MODE: copy
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        pip install --no-cache-dir uv && \
+        uv sync --no-dev && \
+        uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../:/app
+      - api_venv:/opt/venv
+
+volumes:
+  postgres_data:
+  api_venv:

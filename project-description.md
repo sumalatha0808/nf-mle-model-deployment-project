@@ -21,11 +21,7 @@ Use:
 
 ## Dataset
 
-Yellow Taxi trip records: [NYC TLC trip record data](https://www1.nyc.gov/site/tlc/about/tlc-trip-record-data.page)
-
-- Year: `2025`
-- Month: `01`
-- Target: `duration`
+mk`
 
 ## Suggested Workflow
 
